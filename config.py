@@ -6,7 +6,8 @@ currpath    = os.path.abspath(os.curdir)
 #change this to your home directory of everything; should be where the code is checked out
 toppath     =  os.path.dirname(currpath)
 #input top directory for the root files
-inputpath   =  toppath + "/Output/"
+#inputpath   =  toppath + "/Output/"
+inputpath = "/titan_rw/atlas/common/dabbott/"
 helpers.checkpath(inputpath)
 #output top directory for the output plots/root files
 outputpath  =  toppath +"/Output/"

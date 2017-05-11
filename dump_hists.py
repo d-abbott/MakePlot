@@ -3,6 +3,7 @@ from array import array
 import numpy as np
 import ROOT, rootlogon
 import Xhh4bUtils.BkgFit.smoothfit_Ultimate as smoothfit
+import Xhh4bUtils.BkgFit.HistoAnalysis as HistoAnalysis
 from helpers import round_sig
 import config as CONF
 ROOT.gROOT.SetBatch()
@@ -49,9 +50,11 @@ def main():
 
 def dump(finaldis="l"):
 
+    fit_function = "Dijet4Param"
     pltname = "_" + finaldis
     inputpath = CONF.inputpath + inputdir 
-    outputpath = inputpath + "/Limitinput/"
+    outputpath = CONF.outputpath + "/Limitinput"
+    #outputpath = inputpath + "/Limitinput/"
     global pltoutputpath
     pltoutputpath = inputpath + "/Plot/"+ "Smooth/"
     ifile = ROOT.TFile(inputpath + "/" + "sum_" + inputdir + ".root")
@@ -87,9 +90,12 @@ def dump(finaldis="l"):
             savehist(ifile, "data_est_" + cut,  "data_hh")#blind data now; if not, change data_est to data
         else:
             savehist(ifile, "data_" + cut,  "data_hh")#unblind data now; if not, change data_est to data
-        tempdic["data_est"]  = savehist(ifile,   "data_est_" + cut,  "totalbkg_hh", dosmooth=True, smoothrange = qcdsmoothrange, initpar=init_dic[finaldis][c]["qcd"])
-        tempdic["qcd_est"]   = savehist(ifile,   "qcd_est_" + cut,   "qcd_hh",      dosmooth=True, smoothrange = qcdsmoothrange, initpar=init_dic[finaldis][c]["qcd"])
-        tempdic["ttbar_est"] = savehist(ifile,   "ttbar_est_" + cut, "ttbar_hh",    dosmooth=True, smoothrange = topsmoothrange, initpar=init_dic[finaldis][c]["ttbar"])
+        tempdic["data_est"]  = savehist(ifile,   "data_est_" + cut,  "totalbkg_hh", dosmooth=True, smoothrange = qcdsmoothrange,\
+            smoothfunc= fit_function, initpar=init_dic[finaldis][c]["qcd"])
+        tempdic["qcd_est"]   = savehist(ifile,   "qcd_est_" + cut,   "qcd_hh",      dosmooth=True, smoothrange = qcdsmoothrange,\
+            smoothfunc= fit_function, initpar=init_dic[finaldis][c]["qcd"])
+        tempdic["ttbar_est"] = savehist(ifile,   "ttbar_est_" + cut, "ttbar_hh",    dosmooth=True, smoothrange = topsmoothrange,\
+            smoothfunc= fit_function, initpar=init_dic[finaldis][c]["ttbar"])
         savehist(ifile, "zjet_" + cut,      "zjet_hh")
 
         for mass in mass_lst:
@@ -99,6 +105,32 @@ def dump(finaldis="l"):
         outfile.Close()
         makeSmoothedMJJPlots("%s/%s_limit_%s.root" % (outputpath, inputdir, c), pltoutputpath + c + pltname + "_smoothed.pdf")
         masterdic[c] = tempdic
+        
+        HistoAnalysis.HistoAnalysis(datafileName="/titan_rw/atlas/common/dabbott/histograms/btong/b70/data_test/hist-MiniNTuple.root",\
+                  topfileName="/titan_rw/atlas/common/dabbott/histograms/btong/b70/ttbar_comb_test/hist-MiniNTuple.root",\
+                  zjetfileName = "/titan_rw/atlas/common/dabbott/histograms/btong/b70/zjets_test/hist-MiniNTuple.root",\
+                  distributionName= "mHH_l",\
+                  n_trkjet  = ["4","3","2"],\
+                  n_btag    = ["4","3","2"],\
+                  btag_WP   = "70",\
+                  NRebin    = 20,\
+                  use_one_top_nuis = False,\
+                  use_scale_top_0b = False,\
+                  nbtag_top_shape_SRPred_for4b = "33",\
+                  rebinFinal = None,\
+                  smoothing_func = fit_function,\
+                  top_smoothing_func = fit_function,\
+                  inputFitResult = None,\
+                  inputQCDSyst_Dict = None,\
+                  doSmoothing = True,\
+                  addSmoothErrorBin = False,\
+                  qcdSmoothRange = (1200, 3000),\
+                  topSmoothRange = (1200, 3000),\
+                  isSystematicVariation = False,\
+                  verbose = False,\
+                  makeOutputFiles = True,\
+                  MassRegionName = "SR"
+                  )
 
     #print masterdic
     fit_outtex = open(outtablepath + "smoothfit" + pltname + ".tex", "w")
@@ -109,6 +141,7 @@ def dump(finaldis="l"):
 
 def savehist(inputroot, inname, outname, dosmooth=False, smoothrange = (1100, 3000), smoothfunc="Dijet", initpar=[], Rebin=True):
     hist  = inputroot.Get(inname).Clone()
+    hist = VariableRebin(hist, 3, 2000).Clone()
     if ("totalbkg" in outname):
         #hist_zjet = inputroot.Get(inname.replace("data_est", "zjet")).Clone()
         #hist.Add(hist_zjet, -1)
@@ -124,6 +157,7 @@ def savehist(inputroot, inname, outname, dosmooth=False, smoothrange = (1100, 30
     #print inname, smoothrange, initpar, hist.GetMaximum()
     if Rebin:
         hist = do_variable_rebinning(hist, array('d', range(0, 4000, 100)))
+        hist = VariableRebin(hist, 3, 2000).Clone()
     #here do smoothing; but check if histogram is empty; if empty do not smooth
     if (ignore_ttbar and "ttbar" in outname) or hist.Integral() == 0:
         hist.Reset()
@@ -263,6 +297,32 @@ def makeSmoothedMJJPlots( infileName, outfileName):
 
     return
 
+#Pass in a histo and it will return a histogram with scaled bins above a min_mass_to_rebin.
+def VariableRebin(histo, bin_multiplier, min_mass_to_rebin):
+    bin_list = [0]
+    cur_bin = 1
+    first_transition = True
+    current_bin_width = histo.GetBinWidth(cur_bin)
+    while cur_bin < histo.GetNbinsX():
+        if histo.GetBinLowEdge(cur_bin) <= 0:
+            cur_bin += 1
+        elif histo.GetBinLowEdge(cur_bin) < min_mass_to_rebin:
+            bin_list.append(histo.GetBinLowEdge(cur_bin))
+            cur_bin += 1
+        else:
+            if first_transition:
+                cur_bin -=1
+                first_transition = False
+            varied_edge = histo.GetBinLowEdge(cur_bin) + histo.GetBinWidth(cur_bin)*bin_multiplier
+            cur_bin = histo.FindBin(varied_edge)
+            if cur_bin > histo.GetNbinsX():
+                break
+            bin_list.append(varied_edge)
+            
+    bin_array = np.array(bin_list)
+    print bin_array            
+    return histo.Rebin(len(bin_list)-1,"variable rebinned histo", bin_array)
+    
 def do_variable_rebinning(hist,bins, scale=1):
     a=hist.GetXaxis()
 
