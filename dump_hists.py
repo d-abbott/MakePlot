@@ -129,7 +129,8 @@ def dump(finaldis="l"):
                   isSystematicVariation = False,\
                   verbose = False,\
                   makeOutputFiles = True,\
-                  MassRegionName = "SR"
+                  MassRegionName = "SR",
+                  do_variable_rebin = False
                   )
 
     #print masterdic
@@ -141,7 +142,7 @@ def dump(finaldis="l"):
 
 def savehist(inputroot, inname, outname, dosmooth=False, smoothrange = (1100, 3000), smoothfunc="Dijet", initpar=[], Rebin=True):
     hist  = inputroot.Get(inname).Clone()
-    hist = VariableRebin(hist, 3, 2000).Clone()
+    #hist = VariableRebin(hist, 3, 2000).Clone()
     if ("totalbkg" in outname):
         #hist_zjet = inputroot.Get(inname.replace("data_est", "zjet")).Clone()
         #hist.Add(hist_zjet, -1)
@@ -157,7 +158,7 @@ def savehist(inputroot, inname, outname, dosmooth=False, smoothrange = (1100, 30
     #print inname, smoothrange, initpar, hist.GetMaximum()
     if Rebin:
         hist = do_variable_rebinning(hist, array('d', range(0, 4000, 100)))
-        hist = VariableRebin(hist, 3, 2000).Clone()
+        hist = smoothfit.VariableRebin(hist, 3, 2000).Clone()
     #here do smoothing; but check if histogram is empty; if empty do not smooth
     if (ignore_ttbar and "ttbar" in outname) or hist.Integral() == 0:
         hist.Reset()
@@ -296,32 +297,6 @@ def makeSmoothedMJJPlots( infileName, outfileName):
     c.SaveAs(outfileName)
 
     return
-
-#Pass in a histo and it will return a histogram with scaled bins above a min_mass_to_rebin.
-def VariableRebin(histo, bin_multiplier, min_mass_to_rebin):
-    bin_list = [0]
-    cur_bin = 1
-    first_transition = True
-    current_bin_width = histo.GetBinWidth(cur_bin)
-    while cur_bin < histo.GetNbinsX():
-        if histo.GetBinLowEdge(cur_bin) <= 0:
-            cur_bin += 1
-        elif histo.GetBinLowEdge(cur_bin) < min_mass_to_rebin:
-            bin_list.append(histo.GetBinLowEdge(cur_bin))
-            cur_bin += 1
-        else:
-            if first_transition:
-                cur_bin -=1
-                first_transition = False
-            varied_edge = histo.GetBinLowEdge(cur_bin) + histo.GetBinWidth(cur_bin)*bin_multiplier
-            cur_bin = histo.FindBin(varied_edge)
-            if cur_bin > histo.GetNbinsX():
-                break
-            bin_list.append(varied_edge)
-            
-    bin_array = np.array(bin_list)
-    print bin_array            
-    return histo.Rebin(len(bin_list)-1,"variable rebinned histo", bin_array)
     
 def do_variable_rebinning(hist,bins, scale=1):
     a=hist.GetXaxis()
